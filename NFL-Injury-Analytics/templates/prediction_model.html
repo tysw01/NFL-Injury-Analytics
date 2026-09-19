@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player Availability Intelligence</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+  <style>
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    @media (max-width: 1100px) { .metric-grid { grid-template-columns: repeat(3,1fr); } }
+    @media (max-width: 640px) { .metric-grid { grid-template-columns: repeat(2,1fr); } }
+
+    .predictor-form {
+      display: grid;
+      grid-template-columns: 1.4fr 1.4fr auto;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: end;
+    }
+    .predictor-form label { display: block; color: var(--text-muted); font-size: 0.82rem; margin-bottom: 5px; }
+    .predictor-form input, .predictor-form select {
+      width: 100%;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-white);
+      border-radius: 3px;
+      padding: 7px 10px;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.85rem;
+    }
+    .predictor-form input::placeholder { color: var(--text-light); }
+    .predictor-form .full { grid-column: 1 / -1; }
+    @media (max-width: 900px) { .predictor-form { grid-template-columns: 1fr; } }
+    .selected-player { margin-top: 4px; font-size: 0.78rem; color: var(--text-muted); min-height: 1.2em; }
+    .autocomplete-wrap { position: relative; }
+
+    /* Severity field + key side-by-side */
+    .severity-field-wrap { display: flex; align-items: flex-start; gap: 10px; }
+    .severity-field-wrap > div:first-child { flex: 1 1 auto; }
+    .severity-key {
+      flex: 0 0 auto;
+      background: var(--bg-surface, #f5f6fa);
+      border: 1px solid var(--border-strong, #dde1ea);
+      border-radius: 5px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      align-self: flex-end;
+      margin-bottom: 0;
+    }
+    .severity-key-title { font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; color: var(--text-muted); }
+    .severity-key-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .sev-badge { display: inline-block; border-radius: 3px; padding: 1px 6px; font-size: 0.7rem; font-weight: 600; }
+    .sev-minor    { background: #dcfce7; color: #166534; }
+    .sev-moderate { background: #fef9c3; color: #854d0e; }
+    .sev-serious  { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">Prediction Intelligence</div>
+        </div>
+      </a>
+      <a class="status-pill" href="/">← Home</a>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill" href="/">Overview</a>
+      <a class="nav-pill" href="/statistics">Statistics</a>
+      <a class="nav-pill" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill active" href="/prediction-model">Model</a>
+      <a class="nav-pill" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    <section class="hero card" style="margin-top:12px;">
+      <p class="eyebrow">Model Workspace</p>
+      <h1>Player Availability Intelligence</h1>
+      <p class="subtitle">
+        Predicts next-game availability, estimated return timeline, and IR placement risk based on injury history and game context.
+      </p>
+      <div class="cta-row">
+        <button id="reloadModelBtn" class="btn btn-subtle" type="button">Refresh Model Metrics</button>
+      </div>
+
+      <section class="metric-grid" id="modelMetricsGrid">
+        <article class="metric-card"><div class="m-label">Play-Next-Game AUC</div><div class="m-value" id="mAvailAuc">-</div></article>
+        <article class="metric-card"><div class="m-label">Play-Next-Game F1</div><div class="m-value" id="mAvailF1">-</div></article>
+        <article class="metric-card"><div class="m-label">Return Timeline AUC</div><div class="m-value" id="mReturnAuc">-</div></article>
+        <article class="metric-card"><div class="m-label">Return Timeline F1</div><div class="m-value" id="mReturnF1">-</div></article>
+        <article class="metric-card"><div class="m-label">IR Placement AUC</div><div class="m-value" id="mIrAuc">-</div></article>
+        <article class="metric-card"><div class="m-label">IR Placement F1</div><div class="m-value" id="mIrF1">-</div></article>
+      </section>
+      <p id="modelStatus" class="model-note">Loading model overview...</p>
+
+      <div class="predictor-form">
+        <div class="autocomplete-wrap">
+          <label for="playerNameInput">Player Name (type first or last name)</label>
+          <input id="playerNameInput" type="text" placeholder="Example: will..." autocomplete="off" />
+          <div id="playerAutocomplete" class="autocomplete-list" role="listbox" aria-label="Player suggestions"></div>
+          <div id="selectedPlayerMeta" class="selected-player">No player selected.</div>
+        </div>
+        <div>
+          <label for="injuryDetailInput">Injury Detail</label>
+          <select id="injuryDetailInput"><option value="">Loading...</option></select>
+        </div>
+        <div>
+          <label for="reportStatusInput">Report Status</label>
+          <select id="reportStatusInput">
+            <option value="">Select report status</option>
+            <option value="Out">Out</option>
+            <option value="Doubtful">Doubtful</option>
+            <option value="Questionable">Questionable</option>
+            <option value="Probable">Probable</option>
+          </select>
+        </div>
+        <div>
+          <label for="practiceStatusInput">Practice Status</label>
+          <select id="practiceStatusInput">
+            <option value="">Select practice status</option>
+            <option value="DNP">Did Not Participate (DNP)</option>
+            <option value="Limited">Limited</option>
+            <option value="Full">Full</option>
+            <option value="Not Listed">Not Listed</option>
+          </select>
+        </div>
+        <div class="severity-field-wrap">
+          <div>
+            <label for="severityInput">Injury Severity</label>
+            <select id="severityInput">
+              <option value="">Select severity tier</option>
+              <option value="Sprain">Minor</option>
+              <option value="Dislocated">Moderate</option>
+              <option value="Season-Ending">Serious</option>
+            </select>
+          </div>
+          <div class="severity-key">
+            <div class="severity-key-title">Severity Key</div>
+            <div class="severity-key-row"><span class="sev-badge sev-minor">Minor</span><span>Sprains, strains, mild soreness</span></div>
+            <div class="severity-key-row"><span class="sev-badge sev-moderate">Moderate</span><span>Dislocations, minor structural</span></div>
+            <div class="severity-key-row"><span class="sev-badge sev-serious">Serious</span><span>Fractures, tears, ruptures, season-ending</span></div>
+          </div>
+        </div>
+        <div>
+          <label for="daysUntilNextGameInput">Days Until Next Game</label>
+          <input id="daysUntilNextGameInput" type="number" min="0" max="21" step="1" placeholder="Example: 6" />
+        </div>
+        <div>
+          <label for="timeMissedInput">Time Missed Already (games)</label>
+          <input id="timeMissedInput" type="number" min="0" max="20" step="1" placeholder="Example: 2" />
+        </div>
+        <div class="full">
+          <button id="predictBtn" class="btn btn-primary" type="button">Predict Player</button>
+        </div>
+      </div>
+      <div class="predict-card" id="predictCard">
+        <div id="predictStatus" class="model-note">Type a player name, choose available inputs, and run prediction.</div>
+        <div class="predict-grid">
+          <div class="predict-kv" id="playerSummary"></div>
+          <div class="predict-kv" id="availabilitySummary"></div>
+          <div class="predict-kv" id="returnSummary"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid-2" style="margin-top: 14px;">
+      <article class="card endpoint">
+        <h3>Model Dataset Snapshot</h3>
+        <p id="datasetSummary">Loading...</p>
+      </article>
+      <article class="card endpoint">
+        <h3>Top Availability Drivers</h3>
+        <div style="overflow-x:auto;">
+          <table id="featureTable">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Coefficient</th>
+                <th>Direction</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const playerState = {
+      selected: null,
+      suggestions: [],
+      activeIndex: -1,
+      requestSeq: 0,
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function fmt(v) {
+      return Number(v || 0).toFixed(3);
+    }
+
+    function fmtPct(v) {
+      return `${(Number(v || 0) * 100).toFixed(1)}%`;
+    }
+
+    function fillSelect(id, values, placeholder) {
+      const el = document.getElementById(id);
+      const opts = [`<option value="">${escapeHtml(placeholder)}</option>`];
+      (values || []).forEach((value) => {
+        const safe = escapeHtml(value);
+        opts.push(`<option value="${safe}">${safe}</option>`);
+      });
+      el.innerHTML = opts.join('');
+    }
+
+    async function loadModelOverview(refresh = false) {
+      const status = document.getElementById('modelStatus');
+      const summary = document.getElementById('datasetSummary');
+      const tableBody = document.querySelector('#featureTable tbody');
+      status.textContent = 'Loading model overview...';
+
+      try {
+        const res = await fetch(`/api/model/overview${refresh ? '?refresh=1' : ''}`);
+        const payload = await res.json();
+        if (!payload.success) {
+          status.textContent = payload.message || 'Failed to load model overview.';
+          return;
+        }
+
+        const data = payload.responseObject || {};
+        if (!data.ready) {
+          status.textContent = data.message || 'Model not ready.';
+          summary.textContent = `Rows: ${(data.dataset || {}).row_count || 0}`;
+          tableBody.innerHTML = '';
+          return;
+        }
+
+        const availabilityMetrics = (((data.tasks || {}).next_game_availability || {}).metrics || {});
+        const returnTimelineMetrics = (((data.tasks || {}).return_timeline || {}).metrics || {});
+        const irMetrics = (((data.tasks || {}).ir_placement || {}).metrics || {});
+        const ds = data.dataset || {};
+
+        document.getElementById('mAvailAuc').textContent = fmt(availabilityMetrics.roc_auc);
+        document.getElementById('mAvailF1').textContent = fmt(availabilityMetrics.f1);
+        document.getElementById('mReturnAuc').textContent = fmt(returnTimelineMetrics.roc_auc);
+        document.getElementById('mReturnF1').textContent = fmt(returnTimelineMetrics.f1);
+        document.getElementById('mIrAuc').textContent = fmt(irMetrics.roc_auc);
+        document.getElementById('mIrF1').textContent = fmt(irMetrics.f1);
+
+        summary.textContent =
+          `Rows: ${Number(ds.row_count || 0).toLocaleString()} | ` +
+          `Players: ${Number(ds.players || 0).toLocaleString()} | ` +
+          `Seasons: ${Array.isArray(ds.seasons) ? `${ds.seasons[0]}-${ds.seasons[1]}` : '-'} | ` +
+          `Features: ${Number(ds.feature_count || 0).toLocaleString()}`;
+
+        tableBody.innerHTML = '';
+        (data.top_features || []).forEach((row) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row.feature}</td>
+            <td>${Number(row.coefficient).toFixed(4)}</td>
+            <td>${row.direction}</td>
+          `;
+          tableBody.appendChild(tr);
+        });
+
+        status.textContent = data.message || 'Model overview loaded.';
+      } catch (err) {
+        status.textContent = `Failed to load model overview: ${err}`;
+      }
+    }
+
+    async function loadModelInputOptions() {
+      try {
+        const res = await fetch('/api/model/input-options');
+        const payload = await res.json();
+        if (!payload.success) {
+          throw new Error(payload.message || 'Failed to load options');
+        }
+
+        const data = payload.responseObject || {};
+        fillSelect('injuryDetailInput', data.injury_details, 'Select injury detail');
+        // severityInput is now a static grouped select — no dynamic population needed
+      } catch (err) {
+        fillSelect('injuryDetailInput', [], 'Unavailable');
+        // severityInput is static — do not overwrite on error
+      }
+    }
+
+    function setSelectedPlayer(player) {
+      const input = document.getElementById('playerNameInput');
+      const meta = document.getElementById('selectedPlayerMeta');
+      playerState.selected = player || null;
+      playerState.activeIndex = -1;
+
+      if (!player) {
+        meta.textContent = 'No player selected.';
+        return;
+      }
+
+      input.value = player.full_name || '';
+      const historyTag = player.has_injury_history ? 'matched player has injury history' : 'matched player has no injury history rows';
+      meta.textContent = `${player.full_name} | ${historyTag}`;
+    }
+
+    function closeAutocomplete() {
+      const list = document.getElementById('playerAutocomplete');
+      list.classList.remove('show');
+      list.innerHTML = '';
+      playerState.activeIndex = -1;
+    }
+
+    function renderSuggestions(players) {
+      const list = document.getElementById('playerAutocomplete');
+      playerState.suggestions = players || [];
+      playerState.activeIndex = -1;
+
+      if (!players || !players.length) {
+        closeAutocomplete();
+        return;
+      }
+
+      list.innerHTML = players.map((p, idx) => {
+        const title = escapeHtml(p.full_name || 'Unknown Player');
+        return `
+          <div class="autocomplete-item" data-index="${idx}" role="option" aria-selected="false">
+            <div class="autocomplete-title">${title}</div>
+          </div>
+        `;
+      }).join('');
+
+      list.classList.add('show');
+    }
+
+    function highlightSuggestion(index) {
+      const list = document.getElementById('playerAutocomplete');
+      const items = list.querySelectorAll('.autocomplete-item');
+      items.forEach((item, idx) => {
+        item.classList.toggle('active', idx === index);
+        item.setAttribute('aria-selected', idx === index ? 'true' : 'false');
+      });
+    }
+
+    async function searchPlayers(prefix) {
+      const query = (prefix || '').trim();
+      if (query.length < 2) {
+        renderSuggestions([]);
+        return;
+      }
+
+      const seq = ++playerState.requestSeq;
+      try {
+        const res = await fetch(`/api/model/player-search?q=${encodeURIComponent(query)}&limit=12`);
+        const payload = await res.json();
+        if (seq !== playerState.requestSeq) {
+          return;
+        }
+        const players = (payload.responseObject || {}).players || [];
+        renderSuggestions(players);
+      } catch (err) {
+        if (seq !== playerState.requestSeq) {
+          return;
+        }
+        renderSuggestions([]);
+      }
+    }
+
+    async function predictPlayer() {
+      const gsis = (playerState.selected || {}).gsis_id || '';
+      const playerName = (document.getElementById('playerNameInput').value || '').trim();
+      const injuryDetail = (document.getElementById('injuryDetailInput').value || '').trim();
+      const reportStatus = (document.getElementById('reportStatusInput').value || '').trim();
+      const practiceStatus = (document.getElementById('practiceStatusInput').value || '').trim();
+      const severity = (document.getElementById('severityInput').value || '').trim();
+      const daysUntilNextGame = Number(document.getElementById('daysUntilNextGameInput').value || '');
+      const timeMissedAlready = Number(document.getElementById('timeMissedInput').value || '');
+      const status = document.getElementById('predictStatus');
+      const playerSummary = document.getElementById('playerSummary');
+      const availabilitySummary = document.getElementById('availabilitySummary');
+      const returnSummary = document.getElementById('returnSummary');
+
+      if (!playerName) {
+        status.textContent = 'Enter a player name before running prediction.';
+        return;
+      }
+      if (!injuryDetail) {
+        status.textContent = 'Select an injury detail before running prediction.';
+        return;
+      }
+      if (!reportStatus) {
+        status.textContent = 'Select a report status before running prediction.';
+        return;
+      }
+      if (!practiceStatus) {
+        status.textContent = 'Select a practice status before running prediction.';
+        return;
+      }
+      if (!severity) {
+        status.textContent = 'Select an injury severity before running prediction.';
+        return;
+      }
+      if (Number.isNaN(daysUntilNextGame) || daysUntilNextGame < 0) {
+        status.textContent = 'Enter a valid number of days until next game.';
+        return;
+      }
+      if (Number.isNaN(timeMissedAlready) || timeMissedAlready < 0) {
+        status.textContent = 'Enter a valid number for time missed already.';
+        return;
+      }
+
+      status.textContent = 'Generating player prediction...';
+      playerSummary.textContent = '';
+      availabilitySummary.textContent = '';
+      returnSummary.textContent = '';
+
+      try {
+        const res = await fetch('/api/model/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gsis_id: gsis || null,
+            player_name: playerName,
+            injury_detail: injuryDetail || null,
+            report_status: reportStatus || null,
+            practice_status: practiceStatus || null,
+            severity: severity || null,
+            days_until_next_game: daysUntilNextGame,
+            time_missed_already: timeMissedAlready,
+          }),
+        });
+
+        const payload = await res.json();
+        if (!payload.success) {
+          status.textContent = payload.message || 'Prediction unavailable.';
+          return;
+        }
+
+        const data = payload.responseObject || {};
+        const player = data.player || {};
+        const nextGame = data.next_game || {};
+        const timeline = data.return_timeline || {};
+        const irPlacement = data.ir_placement || {};
+        const returnBenchmark = data.return_benchmark || {};
+        const match = data.match || {};
+        const each = timeline.return_on_each_upcoming_game || {};
+
+        status.textContent = 'Prediction generated.';
+
+        playerSummary.innerHTML =
+          `<strong>${player.full_name || playerName || 'Unknown Player'}</strong><br>` +
+          `GSIS: ${player.gsis_id || '-'}<br>` +
+          `Team/Pos: ${player.team || '-'} / ${player.position || '-'}<br>` +
+          `Current Injury: ${player.injury_type || '-'} (${player.injury_detail || '-'})<br>` +
+          `Current Status: ${player.report_status || '-'} (Week ${player.week || '-'}, ${player.season || '-'})<br>` +
+          `Profile Source: ${match.match_source || '-'}`;
+
+        availabilitySummary.innerHTML =
+          `<strong>Next Game Availability</strong><br>` +
+          `Play Probability: ${fmtPct(nextGame.play_probability)}<br>` +
+          `Classification: ${nextGame.classification || '-'}<br><br>` +
+          `<strong>IR Placement Risk (next 4 wks)</strong><br>` +
+          `Probability: ${fmtPct(irPlacement.probability)}<br>` +
+          `Risk Band: ${irPlacement.risk_band || '-'}`;
+
+        // Use cumulative "return_within" values — these always increase monotonically
+        // and match play_probability at game 1. Marginal per-game values are confusing
+        // because a bimodal recovery pattern can make game 4 > game 2/3.
+        const rw = timeline.return_within || {};
+        const stillOut = Math.max(0, 1 - (rw['4_games'] || 0));
+        const benchmarkDays = returnBenchmark.average_return_days;
+        const benchmarkLabel = returnBenchmark.label || 'Average return benchmark';
+        const benchmarkN = Number(returnBenchmark.sample_size || 0);
+        const benchmarkLine = benchmarkDays == null
+          ? `${benchmarkLabel}: unavailable`
+          : `${benchmarkLabel}: ${Number(benchmarkDays).toFixed(1)} days (n=${benchmarkN.toLocaleString()})`;
+        returnSummary.innerHTML =
+          `<strong>Return Timeline</strong><br>` +
+          `Projected Games Out: ${Number(timeline.projected_games_out || 0).toFixed(2)}<br>` +
+          `Return by Game 1: ${fmtPct(rw['1_game'])}<br>` +
+          `Return by Game 2: ${fmtPct(rw['2_games'])}<br>` +
+          `Return by Game 3: ${fmtPct(rw['3_games'])}<br>` +
+          `Return by Game 4: ${fmtPct(rw['4_games'])}<br>` +
+          `Still Out After 4: ${fmtPct(stillOut)}<br><br>` +
+          `<strong>Historical Return Benchmark</strong><br>` +
+          `${benchmarkLine}`;
+      } catch (err) {
+        status.textContent = `Failed to generate prediction: ${err}`;
+      }
+    }
+
+    const playerInput = document.getElementById('playerNameInput');
+    const autocompleteList = document.getElementById('playerAutocomplete');
+
+    playerInput.addEventListener('input', () => {
+      playerState.selected = null;
+      document.getElementById('selectedPlayerMeta').textContent = 'No player selected.';
+      searchPlayers(playerInput.value);
+    });
+
+    playerInput.addEventListener('keydown', (event) => {
+      const suggestions = playerState.suggestions || [];
+      if (!suggestions.length) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        playerState.activeIndex = (playerState.activeIndex + 1) % suggestions.length;
+        highlightSuggestion(playerState.activeIndex);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        playerState.activeIndex = (playerState.activeIndex - 1 + suggestions.length) % suggestions.length;
+        highlightSuggestion(playerState.activeIndex);
+      } else if (event.key === 'Enter') {
+        if (playerState.activeIndex >= 0 && playerState.activeIndex < suggestions.length) {
+          event.preventDefault();
+          setSelectedPlayer(suggestions[playerState.activeIndex]);
+          closeAutocomplete();
+        }
+      } else if (event.key === 'Escape') {
+        closeAutocomplete();
+      }
+    });
+
+    autocompleteList.addEventListener('mousedown', (event) => {
+      const item = event.target.closest('.autocomplete-item');
+      if (!item) {
+        return;
+      }
+      event.preventDefault();
+      const idx = Number(item.getAttribute('data-index'));
+      if (!Number.isNaN(idx) && playerState.suggestions[idx]) {
+        setSelectedPlayer(playerState.suggestions[idx]);
+        closeAutocomplete();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('.autocomplete-wrap')) {
+        closeAutocomplete();
+      }
+    });
+
+    document.getElementById('reloadModelBtn').addEventListener('click', () => loadModelOverview(true));
+    document.getElementById('predictBtn').addEventListener('click', predictPlayer);
+    loadModelInputOptions();
+    loadModelOverview();
+  </script>
+</body>
+</html>

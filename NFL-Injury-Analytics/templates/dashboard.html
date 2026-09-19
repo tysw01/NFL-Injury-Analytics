@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Injury Trend Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">Quality Operations</div>
+        </div>
+      </a>
+      <a class="status-pill" href="/">← Home</a>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill" href="/">Overview</a>
+      <a class="nav-pill" href="/statistics">Statistics</a>
+      <a class="nav-pill active" href="/dashboard">Dashboard</a>
+      <a class="nav-pill" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill" href="/prediction-model">Model</a>
+      <a class="nav-pill" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    {% if error %}
+    <section class="card hero" style="margin-top:12px;">
+      <h1>Dashboard Unavailable</h1>
+      <p class="subtitle">{{ error }}</p>
+    </section>
+    {% else %}
+    <section class="hero card" style="margin-top:12px;">
+      <p class="eyebrow">Dashboard Workspace</p>
+      <h1>Injury Trend Dashboard</h1>
+      <p class="subtitle">Interactive dashboard views for injury trends by type and detail, with separate quality-operational context.</p>
+      <div class="subtle-row" style="margin-top:10px;">
+        <button class="btn btn-secondary dashboard-mode" data-mode="trends" type="button">Trend Explorer</button>
+        <button class="btn btn-subtle dashboard-mode" data-mode="quality" type="button">Quality Monitor</button>
+        <button class="btn btn-subtle dashboard-mode" data-mode="mix" type="button">Injury Mix</button>
+      </div>
+    </section>
+
+    <section id="view-quality" class="grid grid-3" style="margin-top:16px; display:none;">
+      <article class="card metric-card">
+        <h3>Total Events</h3>
+        <div class="metric-value">{{ quality.totals.total_events or 0 }}</div>
+      </article>
+      <article class="card metric-card">
+        <h3>Linked to Game</h3>
+        <div class="metric-value">{{ quality.rates.linkage_rate_percent }}%</div>
+      </article>
+      <article class="card metric-card">
+        <h3>Achilles Linked</h3>
+        <div class="metric-value">{{ quality.rates.achilles_linkage_rate_percent }}%</div>
+      </article>
+      <article class="card metric-card">
+        <h3>Total Injury Logs</h3>
+        <div class="metric-value">{{ quality.log_metrics.total_injury_logs or 0 }}</div>
+      </article>
+      <article class="card metric-card">
+        <h3>Logs Linked to Injury</h3>
+        <div class="metric-value">{{ quality.rates.logs_linkage_rate_percent }}%</div>
+      </article>
+    </section>
+
+    <section id="view-trends" class="grid grid-2" style="margin-top:16px;">
+      <article class="card endpoint">
+        <h3>All Injuries Trend</h3>
+        <p id="overallMeta" class="trend-meta">Loading...</p>
+        <div class="trend-chart-wrap">
+          <canvas id="overallTrendChart"></canvas>
+        </div>
+        <div class="subtle-row trend-filter-row">
+          <label>
+            <span class="muted">View</span>
+            <select id="trendMode" class="btn btn-subtle trend-filter-select">
+              <option value="season">Season</option>
+              <option value="week">Week</option>
+            </select>
+          </label>
+        </div>
+        <div style="overflow-x:auto; margin-top:8px;">
+          <table id="overallTrendTable">
+            <thead>
+              <tr>
+                <th class="periodHeading">Season</th>
+                <th>Injury Count</th>
+                <th>Linked Count</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card endpoint">
+        <h3>Injury-Type/Detail Trends</h3>
+        <p id="filteredMeta" class="trend-meta">Choose a filter.</p>
+        <div class="trend-chart-wrap">
+          <canvas id="filteredTrendChart"></canvas>
+        </div>
+
+        <div class="subtle-row trend-filter-row">
+          <label class="trend-filter-radio">
+            <input type="radio" name="filterKind" value="injury_type" checked>
+            Injury type
+          </label>
+          <label class="trend-filter-radio">
+            <input type="radio" name="filterKind" value="injury_detail">
+            Injury detail
+          </label>
+          <select id="filterValue" class="btn btn-subtle trend-filter-select"></select>
+        </div>
+        <div style="overflow-x:auto; margin-top:8px;">
+          <table id="filteredTrendTable">
+            <thead>
+              <tr>
+                <th class="periodHeading">Season</th>
+                <th>Injury Count</th>
+                <th>Linked Count</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="view-mix" class="grid grid-2" style="margin-top:16px; display:none;">
+      <article class="card endpoint">
+        <h3>Injury Mix Ideas</h3>
+        <p>Next dashboard types could include body-region clusters, position-specific injury loads, and return-to-play lag distributions.</p>
+      </article>
+      <article class="card endpoint">
+        <h3>Operational APIs</h3>
+        <a class="endpoint-link" href="/api/trends/time" target="_blank" rel="noreferrer">/api/trends/time</a><br>
+        <a class="endpoint-link" href="/api/trends/values" target="_blank" rel="noreferrer">/api/trends/values</a><br>
+        <a class="endpoint-link" href="/api/quality" target="_blank" rel="noreferrer">/api/quality</a>
+      </article>
+    </section>
+    {% endif %}
+  </main>
+
+  <script>
+    let overallChart;
+    let filteredChart;
+
+    function getMode() {
+      const el = document.getElementById('trendMode');
+      return el ? el.value : 'season';
+    }
+
+    function getFilterKind() {
+      const selected = document.querySelector('input[name="filterKind"]:checked');
+      return selected ? selected.value : 'injury_type';
+    }
+
+    function formatPeriod(period, mode) {
+      if (mode === 'week') {
+        if (Number(period) === 22) return 'Week 22 (Super Bowl)';
+        if (Number(period) === 23) return 'Offseason';
+        return `Week ${period}`;
+      }
+      return period;
+    }
+
+    function setPeriodHeadings(mode) {
+      const heading = mode === 'week' ? 'Week' : 'Season';
+      document.querySelectorAll('.periodHeading').forEach((el) => {
+        el.textContent = heading;
+      });
+    }
+
+    function renderTable(tableId, rows, mode) {
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${formatPeriod(row.period, mode)}</td>
+          <td>${row.injury_count}</td>
+          <td>${row.linked_count}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderChart(canvasId, chartRef, label, rows, color) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return chartRef;
+      const mode = getMode();
+      const labels = rows.map((row) => formatPeriod(row.period, mode));
+      const values = rows.map((row) => Number(row.injury_count || 0));
+
+      if (chartRef) chartRef.destroy();
+
+      return new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label,
+              data: values,
+              borderColor: color,
+              backgroundColor: 'rgba(232,199,101,0.16)',
+              borderWidth: 2,
+              tension: 0.25,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#f3faf7' } },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#d1dfd9' },
+              grid: { color: 'rgba(255,255,255,0.08)' },
+            },
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#d1dfd9' },
+              grid: { color: 'rgba(255,255,255,0.08)' },
+            },
+          },
+        },
+      });
+    }
+
+    async function loadOverall() {
+      const mode = getMode();
+      setPeriodHeadings(mode);
+
+      const response = await fetch(`/api/trends/time?mode=${encodeURIComponent(mode)}`);
+      const payload = await response.json();
+      const meta = document.getElementById('overallMeta');
+      if (!meta) return;
+
+      if (!payload.success) {
+        meta.textContent = payload.message || 'Failed to load trends.';
+        renderTable('overallTrendTable', [], mode);
+        return;
+      }
+
+      const rows = payload.responseObject.rows || [];
+      meta.textContent = mode === 'week'
+        ? `Weeks returned: ${rows.length} (aggregated across seasons)`
+        : `Seasons returned: ${rows.length}`;
+      renderTable('overallTrendTable', rows, mode);
+      overallChart = renderChart('overallTrendChart', overallChart, `All injuries (${mode})`, rows, '#e8c765');
+    }
+
+    async function loadFilterValues() {
+      const filterKind = getFilterKind();
+      const response = await fetch(`/api/trends/values?filter_kind=${encodeURIComponent(filterKind)}`);
+      const payload = await response.json();
+      const select = document.getElementById('filterValue');
+      if (!select) return;
+      select.innerHTML = '';
+
+      if (!payload.success) {
+        const option = document.createElement('option');
+        option.textContent = 'No values available';
+        option.value = '';
+        select.appendChild(option);
+        return;
+      }
+
+      const values = payload.responseObject.values || [];
+      values.forEach((value) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    async function loadFiltered() {
+      const mode = getMode();
+      const filterKind = getFilterKind();
+      const filterValue = (document.getElementById('filterValue') || {}).value;
+      const meta = document.getElementById('filteredMeta');
+      if (!meta) return;
+
+      const params = new URLSearchParams();
+      params.set('mode', mode);
+      if (filterKind && filterValue) {
+        params.set('filter_kind', filterKind);
+        params.set('filter_value', filterValue);
+      }
+
+      const response = await fetch(`/api/trends/time?${params.toString()}`);
+      const payload = await response.json();
+
+      if (!payload.success) {
+        meta.textContent = payload.message || 'Failed to load filtered trends.';
+        renderTable('filteredTrendTable', [], mode);
+        return;
+      }
+
+      const rows = payload.responseObject.rows || [];
+      meta.textContent = `${filterKind}: ${filterValue || 'all'} | ${mode}: ${rows.length} points`;
+      renderTable('filteredTrendTable', rows, mode);
+      filteredChart = renderChart('filteredTrendChart', filteredChart, `Filtered injuries (${mode})`, rows, '#6ed8cf');
+    }
+
+    function setDashboardMode(mode) {
+      const map = {
+        trends: document.getElementById('view-trends'),
+        quality: document.getElementById('view-quality'),
+        mix: document.getElementById('view-mix'),
+      };
+      Object.entries(map).forEach(([key, node]) => {
+        if (!node) return;
+        node.style.display = key === mode ? '' : 'none';
+      });
+
+      document.querySelectorAll('.dashboard-mode').forEach((btn) => {
+        if (btn.getAttribute('data-mode') === mode) {
+          btn.classList.add('btn-secondary');
+          btn.classList.remove('btn-subtle');
+        } else {
+          btn.classList.add('btn-subtle');
+          btn.classList.remove('btn-secondary');
+        }
+      });
+    }
+
+    document.querySelectorAll('.dashboard-mode').forEach((btn) => {
+      btn.addEventListener('click', () => setDashboardMode(btn.getAttribute('data-mode')));
+    });
+
+    document.querySelectorAll('input[name="filterKind"]').forEach((input) => {
+      input.addEventListener('change', async () => {
+        await loadFilterValues();
+        await loadFiltered();
+      });
+    });
+
+    const filterValueNode = document.getElementById('filterValue');
+    if (filterValueNode) {
+      filterValueNode.addEventListener('change', loadFiltered);
+    }
+
+    const trendModeNode = document.getElementById('trendMode');
+    if (trendModeNode) {
+      trendModeNode.addEventListener('change', async () => {
+        await loadOverall();
+        await loadFiltered();
+      });
+    }
+
+    (async () => {
+      setDashboardMode('trends');
+      await loadOverall();
+      await loadFilterValues();
+      await loadFiltered();
+    })();
+  </script>
+</body>
+</html>

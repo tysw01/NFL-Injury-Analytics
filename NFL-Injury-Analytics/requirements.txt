@@ -1,0 +1,13 @@
+playwright
+pandas
+bs4
+Flask
+PyMySQL
+cryptography
+scikit-learn
+seaborn
+matplotlib
+shap
+nbconvert
+nbformat
+lightgbm

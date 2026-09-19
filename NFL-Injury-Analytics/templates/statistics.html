@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NFL Injury Analytics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">NFL Injury Analytics</div>
+        </div>
+      </a>
+      <a class="status-pill" href="/">← Home</a>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill" href="/">Overview</a>
+      <a class="nav-pill active" href="/statistics">Statistics</a>
+      <a class="nav-pill" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill" href="/prediction-model">Model</a>
+      <a class="nav-pill" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+    <div class="filter-bar">
+      <label>
+        <span class="filter-label">Scope</span>
+        <select id="scopeFilter" class="btn btn-subtle" style="min-width:200px;">
+          <option value="all">All events</option>
+          <option value="logged">Logged in-game only</option>
+          <option value="unlogged">Not logged in-game only</option>
+        </select>
+      </label>
+      <div class="filter-divider"></div>
+      <label>
+        <span class="filter-label">Injury filter</span>
+        <select id="injuryFilterKind" class="btn btn-subtle" style="min-width:160px;">
+          <option value="injury_type">Injury type</option>
+          <option value="injury_detail">Injury detail</option>
+        </select>
+      </label>
+      <label>
+        <span class="filter-label">Value</span>
+        <select id="injuryFilterValue" class="btn btn-subtle" style="min-width:210px;">
+          <option value="">All values</option>
+        </select>
+      </label>
+      <label>
+        <span class="filter-label">Source</span>
+        <select id="sourceMode" class="btn btn-subtle" style="min-width:200px;">
+          <option value="all" selected>All sources</option>
+          <option value="weekly_report">Weekly report only</option>
+          <option value="ir_transactions">IR transactions only</option>
+        </select>
+      </label>
+      <span id="scopeLockBadge">Scope locked by module</span>
+    </div>
+
+    <div class="count-mode-note">
+      <div id="assumptionsGuidePanel" class="assumptions-panel active">
+        <div class="meta-row" style="margin-bottom:0;">
+          <span id="countModeSummary" class="meta-text">Injuries are counted as unique injury IDs using the assumptions shown below.</span>
+          <button id="showAssumptionsBtn" type="button" class="btn btn-subtle">Show</button>
+        </div>
+        <div id="sourceModeSummary" class="meta-row" style="margin-bottom:0;">
+          <span class="meta-badge meta-badge-cyan">Weekly report</span>
+          <span class="meta-badge meta-badge-amber">IR transactions</span>
+        </div>
+      </div>
+
+      <div id="assumptionsRulesPanel" class="assumptions-panel">
+        <div id="countModeExplanation" class="assumptions-static">Creating Injury ID
+A new injury ID is created for injuries sorted on players, injury_detail, and date.
+
+It is created if:
+- First appearance of that injury for that player.
+- Large gap between records and no IR involved (30 days).
+- Large gap between records with IR, but gap exceeds long-term recovery threshold (270 days, about 9 months).
+- Same injury appears multiple seasons later (regardless of IR).
+
+Same injury is identified when:
+- IR to rehab to injury report in the same season.
+- IR end of season to injury report start of next season.
+- Surgery weeks or months later for the same injury.</div>
+        <div class="scenario-table-wrap">
+          <table class="scenario-table">
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Season IR to injury report</td>
+                <td><span class="scenario-result-pill same">SAME injury</span></td>
+              </tr>
+              <tr>
+                <td>End of season IR to next season injury report</td>
+                <td><span class="scenario-result-pill same">SAME injury</span></td>
+              </tr>
+              <tr>
+                <td>ACL in 2021 to ACL in 2024</td>
+                <td><span class="scenario-result-pill new">NEW injury</span></td>
+              </tr>
+              <tr>
+                <td>Surgery months later</td>
+                <td><span class="scenario-result-pill same">SAME injury</span></td>
+              </tr>
+              <tr>
+                <td>Two ankle sprains months apart, no IR</td>
+                <td><span class="scenario-result-pill new">NEW injury</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── KPI band ───────────────────────────────────────── -->
+    <div class="kpi-strip">
+      <div class="kpi-tile">
+        <div id="kpiPrimaryLabel" class="kpi-label">Distinct Injuries</div>
+        <div id="kpiTotalInjuries" class="kpi-value">—</div>
+      </div>
+      <div class="kpi-tile">
+        <div id="kpiSecondaryLabel" class="kpi-label">Event Rows</div>
+        <div id="kpiEventRows" class="kpi-value">—</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">Linked Rate</div>
+        <div id="kpiLinkRate" class="kpi-value">—</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">Logged / Unlogged</div>
+        <div id="kpiSplit" class="kpi-value">—</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">Missing Injury Type</div>
+        <div id="kpiMissingType" class="kpi-value">—</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-label">Missing Injury Detail</div>
+        <div id="kpiMissingDetail" class="kpi-value">—</div>
+      </div>
+    </div>
+
+    <!-- ── Trend section header ───────────────────────────── -->
+    <div class="section-label"><span>Injury Trends</span></div>
+
+    <!-- Season/Week pill toggle sits above both charts -->
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div id="trendYearWrap" style="display:none; align-items:center; gap:6px;">
+          <span style="color:var(--text-muted); font-size:.76rem; text-transform:uppercase; letter-spacing:.07em; font-weight:600;">Season</span>
+          <select id="trendYearFilter" class="btn btn-subtle" style="min-width:110px;">
+            <option value="">All years</option>
+          </select>
+        </div>
+      </div>
+      <div class="pill-toggle" id="topTrendToggle">
+        <button type="button" data-mode="season" class="active">Season</button>
+        <button type="button" data-mode="week">Week</button>
+      </div>
+    </div>
+
+    <section class="grid grid-2">
+      <article class="card chart-card">
+        <div class="trend-header">
+          <h3>Total Injury Trend</h3>
+          <div class="meta-row" id="overallTrendMetaRow">
+            <span id="overallTrendMeta" class="meta-text">Loading…</span>
+          </div>
+        </div>
+        <div class="trend-chart-wrap">
+          <canvas id="overallTrendChart"></canvas>
+        </div>
+        <button class="table-toggle" id="overallTableToggle" onclick="toggleTable('overallTrendTable', this)">
+          <span>Show table</span><span class="arrow">▾</span>
+        </button>
+        <div id="overallTrendTable" class="collapsible-table">
+          <table>
+            <thead>
+              <tr>
+                <th class="topPeriodHeading">Season</th>
+                <th>Injuries</th>
+                <th>Linked</th>
+              </tr>
+            </thead>
+            <tbody id="overallTrendTableBody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card chart-card">
+        <div class="trend-header">
+          <h3>Filtered Injury Trend</h3>
+          <div class="meta-row" id="filteredTrendMetaRow">
+            <span id="filteredTrendMeta" class="meta-text">Loading…</span>
+          </div>
+        </div>
+        <div class="trend-chart-wrap">
+          <canvas id="filteredTrendChart"></canvas>
+        </div>
+        <button class="table-toggle" id="filteredTableToggle" onclick="toggleTable('filteredTrendTable', this)">
+          <span>Show table</span><span class="arrow">▾</span>
+        </button>
+        <div id="filteredTrendTable" class="collapsible-table">
+          <table>
+            <thead>
+              <tr>
+                <th class="topPeriodHeading">Season</th>
+                <th>Injuries</th>
+                <th>Linked</th>
+              </tr>
+            </thead>
+            <tbody id="filteredTrendTableBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── Summary tables section ─────────────────────────── -->
+    <div class="section-label"><span>Summary Tables</span></div>
+    <section class="grid grid-2">
+      <article class="card chart-card">
+        <h3>Top Injury Details</h3>
+        <div style="overflow-x:auto;">
+          <table id="injuryDetailTable">
+            <thead>
+              <tr>
+                <th>Injury Detail</th>
+                <th>Count</th>
+                <th>Share %</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="card chart-card">
+        <h3>Confidence Breakdown</h3>
+        <div style="overflow-x:auto;">
+          <table id="confidenceTable">
+            <thead>
+              <tr>
+                <th>Confidence Level</th>
+                <th>Events</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- ── Analytics Explorer ─────────────────────────────── -->
+    <div class="section-label"><span>Analytics Explorer</span></div>
+
+    <div class="card" style="padding:20px 22px;">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+        <div>
+          <p class="eyebrow" style="margin:0 0 4px;">Module</p>
+          <p class="muted" style="margin:0; font-size:.8rem; max-width:520px;">
+            Pick a dimension to break injuries down by — the chart updates instantly. Modules that depend on game data automatically restrict to linked injuries.
+          </p>
+        </div>
+      </div>
+      <div id="analyticsModuleButtons" class="module-tabs"></div>
+
+      <div class="explorer-controls">
+        <label>
+          <span class="ctl-label">Granularity</span>
+          <select id="moduleGranularity" class="btn btn-subtle" style="min-width:140px;">
+            <option value="season" selected>Season</option>
+            <option value="week">Week</option>
+          </select>
+        </label>
+        <label>
+          <span class="ctl-label">Injury filter</span>
+          <select id="moduleInjuryFilterKind" class="btn btn-subtle" style="min-width:160px;">
+            <option value="injury_type">Injury type</option>
+            <option value="injury_detail">Injury detail</option>
+          </select>
+        </label>
+        <label>
+          <span class="ctl-label">Value</span>
+          <select id="moduleInjuryFilterValue" class="btn btn-subtle" style="min-width:200px;">
+            <option value="">All values</option>
+          </select>
+        </label>
+        <label>
+          <span class="ctl-label">Season from</span>
+          <select id="moduleSeasonStart" class="btn btn-subtle" style="min-width:100px;">
+            <option value="">All time</option>
+          </select>
+        </label>
+        <label>
+          <span class="ctl-label">Season to</span>
+          <select id="moduleSeasonEnd" class="btn btn-subtle" style="min-width:100px;">
+            <option value="">Present</option>
+          </select>
+        </label>
+        <label>
+          <span class="ctl-label">Highlight dimension</span>
+          <select id="moduleDimensionFilter" class="btn btn-subtle" style="min-width:200px;">
+            <option value="">All</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <section class="grid grid-2" style="margin-top:12px;">
+      <article class="card chart-card module-chart-card">
+        <div class="trend-header">
+          <h3 id="moduleTitle">Select a module above</h3>
+          <div class="pill-toggle" id="moduleViewToggle">
+            <button type="button" data-view="total" class="active">Total</button>
+            <button type="button" data-view="percent">% of Total</button>
+            <button type="button" data-view="rate">Rate / Game</button>
+          </div>
+        </div>
+        <div class="meta-row" id="moduleMetaRow">
+          <span id="moduleMeta" class="meta-text">—</span>
+        </div>
+        <div class="trend-chart-wrap">
+          <canvas id="moduleChart"></canvas>
+        </div>
+      </article>
+
+      <article class="card chart-card">
+        <h3>Summary Statistics</h3>
+        <p class="meta-text" style="margin:0 0 10px;">Per-dimension totals across all displayed periods, sorted by total injuries.</p>
+        <div style="overflow-y:auto; max-height:320px;">
+          <table id="moduleSummaryTable">
+            <thead style="position:sticky; top:0; z-index:1;">
+              <tr>
+                <th>Dimension</th>
+                <th>Total</th>
+                <th>% of Total</th>
+                <th>Peak Period</th>
+                <th>Avg / Period</th>
+                <th>Linked %</th>
+                <th title="Injuries per game played in this condition. Only available for game-context modules.">Rate (inj/game)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- Top 10 table below the charts -->
+    <article class="card chart-card" style="margin-top:12px;">
+      <div class="trend-header" style="margin-bottom:10px;">
+        <h3 style="margin:0;">Top 10</h3>
+        <div class="pill-toggle" id="top10TabToggle">
+          <button type="button" data-tab="instances" class="active">Instances</button>
+          <button type="button" data-tab="rate" id="top10RateTab">Rate / Game</button>
+        </div>
+      </div>
+      <p class="meta-text" id="top10TabDesc" style="margin:0 0 10px;">Highest-count period × dimension combinations in the current view.</p>
+      <div style="overflow-x:auto;">
+        <!-- Instances table -->
+        <table id="moduleTable">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Dimension</th>
+              <th>Injuries</th>
+              <th>Linked</th>
+              <th>Link %</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <!-- Rate table -->
+        <table id="moduleRateTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Dimension</th>
+              <th>Inj / Game</th>
+              <th>Injuries</th>
+              <th>Games</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </article>
+
+  </main>
+
+  <script>
+    // ── State ───────────────────────────────────────────────
+    let overallTrendChart;
+    let filteredTrendChart;
+    let moduleChart;
+    let analyticsModules = [];
+    let activeModule = 'injury_trends';
+    let moduleRowsRaw = [];
+    let moduleMetaBase = '';
+    let topTrendMode = 'season';  // controlled by top pill toggle
+    let moduleViewMode = 'total'; // controlled by explorer pill toggle
+    let top10TabMode = 'instances'; // 'instances' | 'rate'
+
+    // ── Helpers ─────────────────────────────────────────────
+    function toNum(v) { return Number(v || 0); }
+
+    function getSourceMode() {
+      const node = document.getElementById('sourceMode');
+      return node ? node.value : 'all';
+    }
+
+    function sourceModeLabel() {
+      const value = getSourceMode();
+      if (value === 'weekly_report') return 'weekly report';
+      if (value === 'ir_transactions') return 'IR transactions';
+      return 'all sources';
+    }
+
+
+    function initAssumptionsShowButton() {
+      const btn = document.getElementById('showAssumptionsBtn');
+      const assumptionsPanel = document.getElementById('assumptionsRulesPanel');
+      if (!btn || !assumptionsPanel) return;
+      btn.addEventListener('click', () => {
+        assumptionsPanel.classList.add('active');
+      });
+    }
+
+    function getFilterState() {
+      return {
+        filterKind: document.getElementById('injuryFilterKind').value,
+        filterValue: document.getElementById('injuryFilterValue').value,
+      };
+    }
+
+    function formatPeriod(period, mode) {
+      if (mode === 'week') {
+        const n = Number(period);
+        if (Number.isFinite(n)) return n === 23 ? 'Offseason' : `Wk ${n}`;
+      }
+      return String(period);
+    }
+
+    function setTopPeriodHeadings(mode) {
+      document.querySelectorAll('.topPeriodHeading').forEach((el) => {
+        el.textContent = mode === 'week' ? 'Week' : 'Season';
+      });
+    }
+
+    function colorForSeries(index) {
+      const palette = ['#6ed8cf', '#e8c765', '#8adfc9', '#bfd2ff', '#f6d988', '#7ec4ff', '#ff9f6a'];
+      return palette[index % palette.length];
+    }
+
+    function sortPeriods(values) {
+      const uniq = Array.from(new Set(values.map((v) => String(v ?? 'Unknown'))));
+      return uniq.sort((a, b) => {
+        const na = Number(a), nb = Number(b);
+        const aNum = Number.isFinite(na) && a.trim() !== '';
+        const bNum = Number.isFinite(nb) && b.trim() !== '';
+        if (aNum && bNum) return na - nb;
+        if (aNum) return -1;
+        if (bNum) return 1;
+        return a.localeCompare(b);
+      });
+    }
+
+    // ── Table helpers ────────────────────────────────────────
+    function renderTable(tableId, rows, mapRowToCells) {
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = mapRowToCells(row);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTrendTableRows(tbodyId, rows, mode) {
+      const tbody = document.getElementById(tbodyId);
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${formatPeriod(row.period, mode)}</td><td>${toNum(row.injury_count)}</td><td>${toNum(row.linked_count)}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ── Collapsible table toggle ─────────────────────────────
+    function toggleTable(tableId, btn) {
+      const table = document.getElementById(tableId);
+      const open = table.classList.toggle('open');
+      btn.classList.toggle('open', open);
+      btn.querySelector('span:first-child').textContent = open ? 'Hide table' : 'Show table';
+    }
+
+    // ── Chart renderers ──────────────────────────────────────
+    const CHART_DEFAULTS = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 260 },
+      plugins: { legend: { labels: { color: '#d1dfd9', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#9fb7ad', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        y: { beginAtZero: true, ticks: { color: '#9fb7ad', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+      },
+    };
+
+    function renderSingleLineChart(canvasId, chartRef, label, labels, values, color, yMax) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return chartRef;
+      if (chartRef) chartRef.destroy();
+      const opts = yMax != null
+        ? {
+            ...CHART_DEFAULTS,
+            scales: {
+              ...CHART_DEFAULTS.scales,
+              y: { ...CHART_DEFAULTS.scales.y, max: yMax },
+            },
+          }
+        : CHART_DEFAULTS;
+      return new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data: values,
+            borderColor: color,
+            backgroundColor: color.replace(')', ', 0.12)').replace('rgb', 'rgba'),
+            borderWidth: 2.5,
+            tension: 0.28,
+            fill: true,
+            pointRadius: values.length < 25 ? 3 : 0,
+            pointHoverRadius: 5,
+          }],
+        },
+        options: opts,
+      });
+    }
+
+    function renderMultiLineChart(canvasId, chartRef, labels, datasets, viewMode = 'total') {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return chartRef;
+      if (chartRef) chartRef.destroy();
+      const isPercent = viewMode === 'percent';
+      const isRate = viewMode === 'rate';
+      return new Chart(canvas, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 260 },
+          plugins: { legend: { labels: { color: '#d1dfd9', font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#9fb7ad', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.06)' } },
+            y: {
+              beginAtZero: true,
+              ...(isPercent ? { max: 100 } : {}),
+              ticks: {
+                color: '#9fb7ad',
+                font: { size: 11 },
+                ...(isPercent ? { callback: (v) => `${v}%` } : {}),
+                ...(isRate ? { callback: (v) => `${v}` } : {}),
+              },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+              title: isRate
+                ? { display: true, text: 'inj / game', color: '#9fb7ad', font: { size: 10 } }
+                : { display: false },
+            },
+          },
+        },
+      });
+    }
+
+    // ── Top 10 tab toggle ────────────────────────────────────
+    document.querySelectorAll('#top10TabToggle button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#top10TabToggle button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        top10TabMode = btn.dataset.tab;
+        syncTop10Tables(moduleRowsRaw);
+      });
+    });
+
+    // ── Explorer view-mode toggle (Total / % of Total / Rate) ─
+    document.querySelectorAll('#moduleViewToggle button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#moduleViewToggle button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        moduleViewMode = btn.dataset.view;
+        applyModuleDimensionFilter();
+      });
+    });
+
+    // ── Trend section ────────────────────────────────────────
+    // Pill toggle wiring
+    document.querySelectorAll('#topTrendToggle button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#topTrendToggle button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        topTrendMode = btn.dataset.mode;
+        // Show/hide year selector based on mode
+        const yearWrap = document.getElementById('trendYearWrap');
+        yearWrap.style.display = topTrendMode === 'week' ? 'flex' : 'none';
+        if (topTrendMode === 'season') {
+          document.getElementById('trendYearFilter').value = '';
+        }
+        loadTopTrends();
+      });
+    });
+
+    function populateYearSelector(rows) {
+      const sel = document.getElementById('trendYearFilter');
+      const current = sel.value;
+      // Extract unique seasons from the rows already loaded for season mode
+      const years = Array.from(new Set(rows.map((r) => String(r.period)).filter(Boolean)))
+        .sort((a, b) => Number(b) - Number(a));
+      sel.innerHTML = '<option value="">All years</option>';
+      years.forEach((y) => {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        if (y === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function loadTopTrends() {
+      const { filterKind, filterValue } = getFilterState();
+      const scope = document.getElementById('scopeFilter').value;
+      const sourceMode = getSourceMode();
+      const yearSel = document.getElementById('trendYearFilter');
+      const selectedYear = topTrendMode === 'week' ? (yearSel ? yearSel.value : '') : '';
+      setTopPeriodHeadings(topTrendMode);
+
+      // Fetch both in parallel
+      const overallParams = new URLSearchParams({ mode: topTrendMode, scope, source_mode: sourceMode });
+      const filteredParams = new URLSearchParams({ mode: topTrendMode, scope, source_mode: sourceMode });
+      if (selectedYear) {
+        overallParams.set('season', selectedYear);
+        filteredParams.set('season', selectedYear);
+      }
+      if (filterKind && filterValue) {
+        filteredParams.set('filter_kind', filterKind);
+        filteredParams.set('filter_value', filterValue);
+      }
+
+      // If switching to week mode with no year selected, first load season list to populate selector
+      if (topTrendMode === 'week' && yearSel && yearSel.options.length <= 1) {
+        const seasonListRes = await fetch('/api/trends/time?mode=season').then((r) => r.json());
+        if (seasonListRes.success) {
+          populateYearSelector((seasonListRes.responseObject || {}).rows || []);
+        }
+      }
+
+      const [overallRes, filteredRes] = await Promise.all([
+        fetch(`/api/trends/time?${overallParams}`).then((r) => r.json()),
+        fetch(`/api/trends/time?${filteredParams}`).then((r) => r.json()),
+      ]);
+
+      // Compute independent y-axis max for each chart so low-volume filtered
+      // trends are still visually comparable instead of being flattened.
+      const overallValues = overallRes.success
+        ? ((overallRes.responseObject || {}).rows || []).map((r) => toNum(r.injury_count))
+        : [];
+      const filteredValues = filteredRes.success
+        ? ((filteredRes.responseObject || {}).rows || []).map((r) => toNum(r.injury_count))
+        : [];
+      const overallMax = Math.max(0, ...overallValues);
+      const filteredMax = Math.max(0, ...filteredValues);
+      const yMaxOverall = overallMax > 0 ? Math.max(5, Math.ceil(overallMax * 1.1)) : undefined;
+      const yMaxFiltered = filteredMax > 0 ? Math.max(5, Math.ceil(filteredMax * 1.1)) : undefined;
+
+      // Overall chart
+      if (overallRes.success) {
+        const rows = (overallRes.responseObject || {}).rows || [];
+        const yearLabel = selectedYear ? ` · ${selectedYear}` : '';
+        document.getElementById('overallTrendMeta').textContent =
+          `${rows.length} ${topTrendMode === 'week' ? 'weeks' : 'seasons'}${yearLabel} · unique injuries · scope: ${scope} · source: ${sourceModeLabel()}`;
+        // Populate year dropdown from season-mode data the first time
+        if (topTrendMode === 'season') populateYearSelector(rows);
+        renderTrendTableRows('overallTrendTableBody', rows, topTrendMode);
+        overallTrendChart = renderSingleLineChart(
+          'overallTrendChart', overallTrendChart,
+          'Total unique injuries',
+          rows.map((r) => formatPeriod(r.period, topTrendMode)),
+          rows.map((r) => toNum(r.injury_count)),
+          '#e8c765', yMaxOverall
+        );
+      } else {
+        document.getElementById('overallTrendMeta').textContent = 'Failed to load.';
+      }
+
+      // Filtered chart
+      if (filteredRes.success) {
+        const rows = (filteredRes.responseObject || {}).rows || [];
+        const label = filterValue ? `${filterKind.replace('_', ' ')}: ${filterValue}` : 'No filter — showing all';
+        document.getElementById('filteredTrendMeta').textContent = `${label} · unique injuries · ${sourceModeLabel()}`;
+        renderTrendTableRows('filteredTrendTableBody', rows, topTrendMode);
+        filteredTrendChart = renderSingleLineChart(
+          'filteredTrendChart', filteredTrendChart,
+          filterValue ? filterValue : 'All injuries',
+          rows.map((r) => formatPeriod(r.period, topTrendMode)),
+          rows.map((r) => toNum(r.injury_count)),
+          '#6ed8cf', yMaxFiltered
+        );
+      } else {
+        document.getElementById('filteredTrendMeta').textContent = 'Failed to load.';
+      }
+    }
+
+    // ── Statistics overview (KPI + tables) ──────────────────
+    async function loadStatistics() {
+      const scope = document.getElementById('scopeFilter').value;
+      const sourceMode = getSourceMode();
+      const { filterKind, filterValue } = getFilterState();
+
+      const params = new URLSearchParams({ scope, source_mode: sourceMode });
+      if (filterKind && filterValue) {
+        params.set('filter_kind', filterKind);
+        params.set('filter_value', filterValue);
+      }
+
+      const response = await fetch(`/api/statistics/overview?${params}`);
+      const payload = await response.json();
+      if (!payload.success) return;
+
+      const data = payload.responseObject || {};
+      const totals = data.totals || {};
+      const missingness = data.missingness || {};
+      const detailRows = data.injury_detail_breakdown || [];
+      const confidenceRows = data.confidence || [];
+
+      document.getElementById('kpiTotalInjuries').textContent = toNum(totals.total_injuries).toLocaleString();
+      document.getElementById('kpiEventRows').textContent = toNum(totals.total_event_rows).toLocaleString();
+      document.getElementById('kpiLinkRate').textContent = `${Number(data.linkage_rate_percent || 0).toFixed(1)}%`;
+      document.getElementById('kpiSplit').textContent =
+        `${toNum(totals.logged_event_rows).toLocaleString()} / ${toNum(totals.unlogged_event_rows).toLocaleString()}`;
+      document.getElementById('kpiMissingType').textContent =
+        `${Number(missingness.injury_type_missing_percent || 0).toFixed(1)}%`;
+      document.getElementById('kpiMissingDetail').textContent =
+        `${Number(missingness.injury_detail_missing_percent || 0).toFixed(1)}%`;
+
+      renderTable('injuryDetailTable', detailRows, (row) => `
+        <td>${row.injury_detail}</td>
+        <td>${toNum(row.injury_count)}</td>
+        <td>${Number(row.share_percent || 0).toFixed(1)}%</td>
+      `);
+      renderTable('confidenceTable', confidenceRows, (row) => `
+        <td>${row.confidence_level}</td>
+        <td>${toNum(row.event_count)}</td>
+      `);
+    }
+
+    // ── Filter value loader ──────────────────────────────────
+    async function loadFilterValues(kindSelectId, valueSelectId) {
+      const kindNode = document.getElementById(kindSelectId);
+      const valueNode = document.getElementById(valueSelectId);
+      if (!kindNode || !valueNode) return;
+
+      const existing = valueNode.value;
+      const response = await fetch(`/api/trends/values?filter_kind=${encodeURIComponent(kindNode.value)}`);
+      const payload = await response.json();
+
+      valueNode.innerHTML = '<option value="">All values</option>';
+      if (!payload.success) return;
+
+      ((payload.responseObject || {}).values || []).forEach((value) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        if (value === existing) opt.selected = true;
+        valueNode.appendChild(opt);
+      });
+    }
+
+    // ── Explorer: module tabs ────────────────────────────────
+    function renderModuleButtons() {
+      const wrap = document.getElementById('analyticsModuleButtons');
+      if (!wrap) return;
+      wrap.innerHTML = '';
+      analyticsModules.forEach((m) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `module-tab${m.key === activeModule ? ' active' : ''}`;
+        btn.textContent = m.label;
+        btn.addEventListener('click', async () => {
+          activeModule = m.key;
+          renderModuleButtons();
+          await loadExplorerModule();
+        });
+        wrap.appendChild(btn);
+      });
+    }
+
+    async function loadExplorerModules() {
+      const response = await fetch('/api/analytics/modules');
+      const payload = await response.json();
+      analyticsModules = payload.success
+        ? (payload.responseObject || {}).modules || []
+        : [{ key: 'injury_trends', label: 'Injury Trends' }];
+      if (!analyticsModules.find((m) => m.key === activeModule)) {
+        activeModule = analyticsModules.length ? analyticsModules[0].key : 'injury_trends';
+      }
+      renderModuleButtons();
+    }
+
+    // ── Rate toggle visibility ────────────────────────────────
+    function updateRateToggleVisibility(module) {
+      const hasGameCount = CONTEXT_MODULES.has(module);
+      const rateBtn = document.querySelector('#moduleViewToggle [data-view="rate"]');
+      const rateTabBtn = document.getElementById('top10RateTab');
+      if (rateBtn) {
+        rateBtn.style.display = hasGameCount ? '' : 'none';
+        // If rate mode is active but module has no game count, fall back to total
+        if (!hasGameCount && moduleViewMode === 'rate') {
+          moduleViewMode = 'total';
+          document.querySelectorAll('#moduleViewToggle button').forEach((b) => {
+            b.classList.toggle('active', b.dataset.view === 'total');
+          });
+        }
+      }
+      if (rateTabBtn) {
+        rateTabBtn.style.display = hasGameCount ? '' : 'none';
+        // If rate tab is active but module has no game count, fall back to instances
+        if (!hasGameCount && top10TabMode === 'rate') {
+          top10TabMode = 'instances';
+          document.querySelectorAll('#top10TabToggle button').forEach((b) => {
+            b.classList.toggle('active', b.dataset.tab === 'instances');
+          });
+        }
+      }
+    }
+
+    // ── Scope lock for context modules ───────────────────────
+    const CONTEXT_MODULES = new Set([
+      'field_type','quarter','weather','temperature','location','stadium','roof','opponent','humidity','wind_direction'
+    ]);
+    const PLAYER_MODULES = new Set(['age','experience']);
+
+    function updateScopeLock(module) {
+      const badge = document.getElementById('scopeLockBadge');
+      const select = document.getElementById('scopeFilter');
+      const isLocked = CONTEXT_MODULES.has(module) || PLAYER_MODULES.has(module);
+      badge.style.display = isLocked ? 'inline-block' : 'none';
+      select.disabled = isLocked;
+      select.style.opacity = isLocked ? '0.45' : '';
+    }
+
+    // ── Explorer: load module ────────────────────────────────
+    async function loadExplorerModule() {
+      const scope = document.getElementById('scopeFilter').value;
+      const sourceMode = getSourceMode();
+      const granularity = document.getElementById('moduleGranularity').value;
+      const filterKind = document.getElementById('moduleInjuryFilterKind').value;
+      const filterValue = document.getElementById('moduleInjuryFilterValue').value;
+      const seasonStart = document.getElementById('moduleSeasonStart').value;
+      const seasonEnd = document.getElementById('moduleSeasonEnd').value;
+
+      updateScopeLock(activeModule);
+      updateRateToggleVisibility(activeModule);
+
+      const params = new URLSearchParams({ module: activeModule, scope, granularity, source_mode: sourceMode });
+      if (filterKind && filterValue) {
+        params.set('filter_kind', filterKind);
+        params.set('filter_value', filterValue);
+      }
+      if (seasonStart) params.set('season_start', seasonStart);
+      if (seasonEnd)   params.set('season_end',   seasonEnd);
+
+      const response = await fetch(`/api/analytics/explorer?${params}`);
+      const payload = await response.json();
+
+      const metaEl = document.getElementById('moduleMeta');
+      const titleEl = document.getElementById('moduleTitle');
+      const metaRowEl = document.getElementById('moduleMetaRow');
+      const dimensionSelect = document.getElementById('moduleDimensionFilter');
+
+      if (!payload.success) {
+        metaEl.textContent = payload.message || 'Failed to load module.';
+        document.querySelector('#moduleTable tbody').innerHTML = '';
+        return;
+      }
+
+      const data = payload.responseObject || {};
+      const rows = data.rows || [];
+      moduleRowsRaw = rows;
+      titleEl.textContent = data.module_label || 'Analytics Module';
+
+      // Build meta badges
+      metaRowEl.innerHTML = `<span class="meta-text">${data.granularity} · ${rows.length} rows · unique injuries</span>`;
+      if ((data.source_mode || sourceMode) === 'weekly_report') {
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-cyan">Weekly report only</span>`;
+      } else if ((data.source_mode || sourceMode) === 'ir_transactions') {
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-amber">IR transactions only</span>`;
+      }
+      if (data.forced_logged_scope) {
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-cyan">Linked-only scope</span>`;
+      }
+      if (data.forced_player_link_scope) {
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-cyan">Player-linked scope</span>`;
+      }
+      if (data.module === 'opponent') {
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-amber">Derived field</span>`;
+      }
+      moduleMetaBase = metaRowEl.innerHTML;
+
+      // Rebuild dimension select
+      const currentDim = dimensionSelect.value;
+      const uniqueDimensions = Array.from(new Set(rows.map((r) => r.dimension).filter(Boolean))).sort();
+      dimensionSelect.innerHTML = '<option value="">All</option>';
+      uniqueDimensions.forEach((value) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        if (value === currentDim) opt.selected = true;
+        dimensionSelect.appendChild(opt);
+      });
+
+      applyModuleDimensionFilter();
+    }
+
+    // ── Explorer: series builders ────────────────────────────
+    function _normalizeRows(rows) {
+      return rows.map((row) => ({
+        period: String(row.period ?? 'Unknown'),
+        dimension: String(row.dimension ?? 'All'),
+        injury_count: toNum(row.injury_count),
+        linked_count: toNum(row.linked_count),
+        game_count: row.game_count != null ? toNum(row.game_count) : null,
+      }));
+    }
+
+    function _getTopDimensions(normalized, selectedDimension, limit = 7) {
+      const totals = {};
+      normalized.forEach((r) => { totals[r.dimension] = (totals[r.dimension] || 0) + r.injury_count; });
+      let dims = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+      return selectedDimension ? dims : dims.slice(0, limit);
+    }
+
+    function buildRateSeries(rows, selectedDimension, granularity) {
+      const normalized = _normalizeRows(rows);
+      const filtered = selectedDimension ? normalized.filter((r) => r.dimension === selectedDimension) : normalized;
+      const periods = sortPeriods(filtered.map((r) => r.period));
+      const labels = periods.map((p) => formatPeriod(p, granularity));
+      const dimensions = _getTopDimensions(filtered, selectedDimension);
+      const datasets = dimensions.map((dim, idx) => {
+        const byPeriod = {};
+        filtered.forEach((r) => {
+          if (r.dimension === dim && r.game_count != null && r.game_count > 0) {
+            byPeriod[r.period] = parseFloat((r.injury_count / r.game_count).toFixed(2));
+          }
+        });
+        return {
+          label: dim,
+          data: periods.map((p) => byPeriod[p] ?? null),
+          borderColor: colorForSeries(idx),
+          backgroundColor: 'rgba(255,255,255,0.01)',
+          borderWidth: 2, tension: 0.22, fill: false,
+          pointRadius: periods.length < 25 ? 2 : 0, pointHoverRadius: 5,
+          spanGaps: true,
+        };
+      });
+      return { labels, datasets };
+    }
+
+    function buildTotalSeries(rows, selectedDimension, granularity) {
+      const normalized = _normalizeRows(rows);
+      const filtered = selectedDimension ? normalized.filter((r) => r.dimension === selectedDimension) : normalized;
+      const periods = sortPeriods(filtered.map((r) => r.period));
+      const labels = periods.map((p) => formatPeriod(p, granularity));
+      const dimensions = _getTopDimensions(filtered, selectedDimension);
+      const datasets = dimensions.map((dim, idx) => {
+        const byPeriod = {};
+        filtered.forEach((r) => { if (r.dimension === dim) byPeriod[r.period] = (byPeriod[r.period] || 0) + r.injury_count; });
+        return {
+          label: dim,
+          data: periods.map((p) => byPeriod[p] || 0),
+          borderColor: colorForSeries(idx),
+          backgroundColor: 'rgba(255,255,255,0.01)',
+          borderWidth: 2, tension: 0.22, fill: false,
+          pointRadius: periods.length < 25 ? 2 : 0, pointHoverRadius: 5,
+        };
+      });
+      return { labels, datasets };
+    }
+
+    function buildPercentSeries(rows, selectedDimension, granularity) {
+      const normalized = _normalizeRows(rows);
+      const filtered = selectedDimension ? normalized.filter((r) => r.dimension === selectedDimension) : normalized;
+      const periods = sortPeriods(filtered.map((r) => r.period));
+      const labels = periods.map((p) => formatPeriod(p, granularity));
+      // Period totals across ALL dimensions (for denominator)
+      const periodTotals = {};
+      filtered.forEach((r) => { periodTotals[r.period] = (periodTotals[r.period] || 0) + r.injury_count; });
+      const dimensions = _getTopDimensions(filtered, selectedDimension);
+      const datasets = dimensions.map((dim, idx) => {
+        const byPeriod = {};
+        filtered.forEach((r) => { if (r.dimension === dim) byPeriod[r.period] = (byPeriod[r.period] || 0) + r.injury_count; });
+        return {
+          label: dim,
+          data: periods.map((p) => {
+            const total = periodTotals[p] || 1;
+            return parseFloat(((byPeriod[p] || 0) / total * 100).toFixed(1));
+          }),
+          borderColor: colorForSeries(idx),
+          backgroundColor: 'rgba(255,255,255,0.01)',
+          borderWidth: 2, tension: 0.22, fill: false,
+          pointRadius: periods.length < 25 ? 2 : 0, pointHoverRadius: 5,
+        };
+      });
+      return { labels, datasets };
+    }
+
+    // ── Summary statistics (client-side) ─────────────────────
+    function computeSummaryStats(rows) {
+      const normalized = _normalizeRows(rows);
+      const grandTotal = normalized.reduce((s, r) => s + r.injury_count, 0);
+      const byDim = {};
+      normalized.forEach((r) => {
+        if (!byDim[r.dimension]) byDim[r.dimension] = [];
+        byDim[r.dimension].push(r);
+      });
+      return Object.entries(byDim)
+        .map(([dim, dimRows]) => {
+          const total = dimRows.reduce((s, r) => s + r.injury_count, 0);
+          const linked = dimRows.reduce((s, r) => s + r.linked_count, 0);
+          const totalGames = dimRows.reduce((s, r) => s + (r.game_count ?? 0), 0);
+          const hasRate = dimRows.some((r) => r.game_count != null && r.game_count > 0);
+          const uniquePeriods = new Set(dimRows.map((r) => r.period));
+          const peakRow = dimRows.reduce((best, r) => r.injury_count > best.injury_count ? r : best, dimRows[0]);
+          return {
+            dimension: dim,
+            total,
+            pct: grandTotal > 0 ? (total / grandTotal * 100).toFixed(1) : '0.0',
+            peak_period: peakRow ? peakRow.period : '—',
+            avg: uniquePeriods.size > 0 ? (total / uniquePeriods.size).toFixed(1) : '—',
+            linked_rate: total > 0 ? (linked / total * 100).toFixed(1) : '0.0',
+            rate: hasRate && totalGames > 0 ? (total / totalGames).toFixed(2) : '—',
+          };
+        })
+        .sort((a, b) => b.total - a.total);
+    }
+
+    function renderSummaryStats(rows) {
+      const stats = computeSummaryStats(rows);
+      const tbody = document.querySelector('#moduleSummaryTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      stats.forEach((s) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${s.dimension}</td>
+          <td>${s.total.toLocaleString()}</td>
+          <td>${s.pct}%</td>
+          <td>${s.peak_period}</td>
+          <td>${s.avg}</td>
+          <td>${s.linked_rate}%</td>
+          <td>${s.rate}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ── Top 10 rendering helpers ──────────────────────────────
+    function renderTop10Instances(rows) {
+      const top10 = [...rows]
+        .sort((a, b) => toNum(b.injury_count) - toNum(a.injury_count))
+        .slice(0, 10);
+      const tbody = document.querySelector('#moduleTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      top10.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.period ?? '—'}</td>
+          <td>${row.dimension ?? '—'}</td>
+          <td>${toNum(row.injury_count)}</td>
+          <td>${toNum(row.linked_count)}</td>
+          <td>${Number(row.linked_rate_percent || 0).toFixed(1)}%</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTop10Rate(rows) {
+      const filtered = rows.filter((r) => r.game_count != null && toNum(r.game_count) > 0);
+      const top10 = filtered
+        .map((r) => ({ ...r, _rate: toNum(r.injury_count) / toNum(r.game_count) }))
+        .sort((a, b) => b._rate - a._rate)
+        .slice(0, 10);
+      const tbody = document.querySelector('#moduleRateTable tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      if (top10.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No game-context data for this module.</td></tr>';
+        return;
+      }
+      top10.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.period ?? '—'}</td>
+          <td>${row.dimension ?? '—'}</td>
+          <td><strong>${row._rate.toFixed(2)}</strong></td>
+          <td>${toNum(row.injury_count)}</td>
+          <td>${toNum(row.game_count)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function syncTop10Tables(rows) {
+      const instancesTable = document.getElementById('moduleTable');
+      const rateTable = document.getElementById('moduleRateTable');
+      const descEl = document.getElementById('top10TabDesc');
+      if (top10TabMode === 'rate') {
+        if (instancesTable) instancesTable.style.display = 'none';
+        if (rateTable) rateTable.style.display = '';
+        if (descEl) descEl.textContent = 'Highest injuries-per-game ratios in the current view, sorted by rate.';
+        renderTop10Rate(rows);
+      } else {
+        if (instancesTable) instancesTable.style.display = '';
+        if (rateTable) rateTable.style.display = 'none';
+        if (descEl) descEl.textContent = 'Highest-count period × dimension combinations in the current view.';
+        renderTop10Instances(rows);
+      }
+    }
+
+    function refreshCountModeGuidance() {
+      const summaryNode = document.getElementById('countModeSummary');
+      const sourceNode = document.getElementById('sourceModeSummary');
+      const trendNode = document.getElementById('trendCountModeText');
+      const primaryLabel = document.getElementById('kpiPrimaryLabel');
+      const secondaryLabel = document.getElementById('kpiSecondaryLabel');
+      if (!summaryNode || !sourceNode || !trendNode || !primaryLabel || !secondaryLabel) return;
+
+      summaryNode.textContent = 'Injuries are counted as unique injury IDs based on the assumptions shown below.';
+      trendNode.textContent = `Left: unique injuries · Right: filtered unique injuries by injury filter above · source: ${sourceModeLabel()}.`;
+      primaryLabel.textContent = 'Distinct Injuries';
+      secondaryLabel.textContent = 'Event Rows';
+
+      if (getSourceMode() === 'weekly_report') {
+        sourceNode.innerHTML = '<span class="meta-text">Source filter active:</span><span class="meta-badge meta-badge-cyan">Weekly report only</span>';
+      } else if (getSourceMode() === 'ir_transactions') {
+        sourceNode.innerHTML = '<span class="meta-text">Source filter active:</span><span class="meta-badge meta-badge-amber">IR transactions only</span>';
+      } else {
+        sourceNode.innerHTML = '<span class="meta-text">Source badges:</span><span class="meta-badge meta-badge-cyan">Weekly report</span><span class="meta-badge meta-badge-amber">IR transactions</span>';
+      }
+    }
+
+    function applyModuleDimensionFilter() {
+      const granularity = document.getElementById('moduleGranularity').value;
+      const selectedDimension = document.getElementById('moduleDimensionFilter').value;
+      const rows = selectedDimension
+        ? moduleRowsRaw.filter((row) => (row.dimension || '') === selectedDimension)
+        : moduleRowsRaw;
+
+      // Top 10 tables
+      syncTop10Tables(rows);
+
+      // Chart (rate / percent / total based on toggle)
+      let chartData;
+      if (moduleViewMode === 'percent') {
+        chartData = buildPercentSeries(rows, selectedDimension, granularity);
+      } else if (moduleViewMode === 'rate') {
+        chartData = buildRateSeries(rows, selectedDimension, granularity);
+      } else {
+        chartData = buildTotalSeries(rows, selectedDimension, granularity);
+      }
+      moduleChart = renderMultiLineChart('moduleChart', moduleChart, chartData.labels, chartData.datasets, moduleViewMode);
+
+      // Summary stats table
+      renderSummaryStats(rows);
+
+      // Meta row dimension badge
+      const metaRowEl = document.getElementById('moduleMetaRow');
+      if (selectedDimension) {
+        const existing = metaRowEl.querySelector('.dim-badge');
+        if (existing) existing.remove();
+        metaRowEl.innerHTML += `<span class="meta-badge meta-badge-amber dim-badge">Dim: ${selectedDimension}</span>`;
+      } else {
+        metaRowEl.innerHTML = moduleMetaBase;
+      }
+    }
+
+    // ── Event listeners ──────────────────────────────────────
+    // Year filter for week-mode trend charts
+    document.getElementById('trendYearFilter').addEventListener('change', () => loadTopTrends());
+
+    // Global filters (affect KPIs, summary tables, both trend charts)
+    document.getElementById('injuryFilterKind').addEventListener('change', async () => {
+      await loadFilterValues('injuryFilterKind', 'injuryFilterValue');
+      await Promise.all([loadStatistics(), loadTopTrends()]);
+    });
+    document.getElementById('injuryFilterValue').addEventListener('change', async () => {
+      await Promise.all([loadStatistics(), loadTopTrends()]);
+    });
+    document.getElementById('scopeFilter').addEventListener('change', async () => {
+      await Promise.all([loadStatistics(), loadTopTrends(), loadExplorerModule()]);
+    });
+    document.getElementById('sourceMode').addEventListener('change', async () => {
+      refreshCountModeGuidance();
+      await Promise.all([loadStatistics(), loadTopTrends(), loadExplorerModule()]);
+    });
+
+    // Explorer-specific filters
+    document.getElementById('moduleInjuryFilterKind').addEventListener('change', async () => {
+      await loadFilterValues('moduleInjuryFilterKind', 'moduleInjuryFilterValue');
+      await loadExplorerModule();
+    });
+    document.getElementById('moduleInjuryFilterValue').addEventListener('change', () => loadExplorerModule());
+    document.getElementById('moduleGranularity').addEventListener('change', () => loadExplorerModule());
+    document.getElementById('moduleDimensionFilter').addEventListener('change', applyModuleDimensionFilter);
+    document.getElementById('moduleSeasonStart').addEventListener('change', () => loadExplorerModule());
+    document.getElementById('moduleSeasonEnd').addEventListener('change', () => loadExplorerModule());
+
+    // ── Season range dropdown population ─────────────────────
+    function populateSeasonDropdowns() {
+      const currentYear = new Date().getFullYear();
+      const startSel = document.getElementById('moduleSeasonStart');
+      const endSel   = document.getElementById('moduleSeasonEnd');
+      // nflverse data starts 2009 for injury reports; pbp back to 1999
+      for (let yr = currentYear; yr >= 2009; yr--) {
+        let opt1 = document.createElement('option');
+        opt1.value = yr; opt1.textContent = yr;
+        startSel.appendChild(opt1);
+        let opt2 = document.createElement('option');
+        opt2.value = yr; opt2.textContent = yr;
+        endSel.appendChild(opt2);
+      }
+    }
+
+    // ── Init ─────────────────────────────────────────────────
+    (async () => {
+      populateSeasonDropdowns();
+      initAssumptionsShowButton();
+      refreshCountModeGuidance();
+      await Promise.all([
+        loadFilterValues('injuryFilterKind', 'injuryFilterValue'),
+        loadFilterValues('moduleInjuryFilterKind', 'moduleInjuryFilterValue'),
+      ]);
+      await Promise.all([loadStatistics(), loadTopTrends(), loadExplorerModules()]);
+      await loadExplorerModule();
+    })();
+  </script>
+</body>
+</html>

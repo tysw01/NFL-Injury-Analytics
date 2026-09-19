@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Statistics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">Data Dictionary Studio</div>
+        </div>
+      </a>
+      <a class="status-pill" href="/">← Home</a>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill" href="/">Overview</a>
+      <a class="nav-pill" href="/statistics">Statistics</a>
+      <a class="nav-pill active" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill" href="/prediction-model">Model</a>
+      <a class="nav-pill" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    {% if error %}
+    <section class="card hero" style="margin-top:12px;">
+      <h1>Data Statistics Unavailable</h1>
+      <p class="subtitle">{{ error }}</p>
+    </section>
+    {% else %}
+    <section class="hero card" style="margin-top:12px;">
+      <p class="eyebrow">Data Foundations</p>
+      <h1>Data Statistics & Quality</h1>
+      <p class="subtitle">Validation metrics, schema profile signals, and dictionary controls for database tables that drive model and dashboard outputs.</p>
+    </section>
+
+    <section class="grid" style="margin-top:16px;">
+      <article class="card endpoint">
+        <h3>Total Events</h3>
+        <p>{{ quality.totals.total_events or 0 }}</p>
+      </article>
+      <article class="card endpoint">
+        <h3>Event Linkage Rate</h3>
+        <p>{{ quality.rates.linkage_rate_percent }}%</p>
+      </article>
+      <article class="card endpoint">
+        <h3>Total Injury Logs</h3>
+        <p>{{ quality.log_metrics.total_injury_logs or 0 }}</p>
+      </article>
+      <article class="card endpoint">
+        <h3>Log Linkage Rate</h3>
+        <p>{{ quality.rates.logs_linkage_rate_percent }}%</p>
+      </article>
+    </section>
+
+    <section class="card endpoint" style="margin-top:16px;">
+      <h3>Database Tables</h3>
+
+      <div class="grid" style="margin-top:12px;">
+        <article class="card endpoint">
+          <h3>Data Tables</h3>
+          <div class="subtle-row" style="margin-top:10px;">
+            {% for t in catalog.data_tables %}
+              <a class="btn btn-subtle" href="/data-statistics?table={{ t.table_name }}">
+                {{ t.table_name }} ({{ t.row_count }} rows, {{ t.column_count }} cols, {{ t.documentation_rate_percent }}% documented)
+              </a>
+            {% else %}
+              <span class="subtitle">No core data tables found.</span>
+            {% endfor %}
+          </div>
+        </article>
+
+        <article class="card endpoint">
+          <h3>Bridge Tables</h3>
+          <div class="subtle-row" style="margin-top:10px;">
+            {% for t in catalog.bridge_tables %}
+              <a class="btn btn-subtle" href="/data-statistics?table={{ t.table_name }}">
+                {{ t.table_name }} ({{ t.row_count }} rows, {{ t.column_count }} cols, {{ t.documentation_rate_percent }}% documented)
+              </a>
+            {% else %}
+              <span class="subtitle">No bridge tables found.</span>
+            {% endfor %}
+          </div>
+        </article>
+      </div>
+
+      {% if catalog.other_tables %}
+      <article class="card endpoint" style="margin-top:12px;">
+        <h3>Other Tables</h3>
+        <p>Additional tables currently in the schema.</p>
+        <div class="subtle-row" style="margin-top:10px;">
+          {% for t in catalog.other_tables %}
+            <a class="btn btn-subtle" href="/data-statistics?table={{ t.table_name }}">
+              {{ t.table_name }} ({{ t.row_count }} rows, {{ t.column_count }} cols, {{ t.documentation_rate_percent }}% documented)
+            </a>
+          {% endfor %}
+        </div>
+      </article>
+      {% endif %}
+    </section>
+
+    <section class="card endpoint" style="margin-top:16px;">
+      <h3>Fields: {{ catalog.selected_table }}</h3>
+      <p style="margin-top:6px;">Statistical metadata, documentation coverage, and field dictionary management for {{ catalog.selected_table }}.</p>
+
+      {% if saved %}
+      <p style="margin-top:10px; color:#e2bc4b; font-weight:700;">Descriptions saved successfully.</p>
+      {% endif %}
+
+      <section class="grid" style="margin-top:14px;">
+        <article class="card endpoint">
+          <h3>Documentation Coverage</h3>
+          <p>{{ catalog.selected_profile.documented_columns }} / {{ catalog.selected_profile.total_columns }} fields</p>
+          <div class="profile-progress" style="margin-top:10px;">
+            <div class="profile-progress-bar" style="width: {{ catalog.selected_profile.documentation_rate_percent }}%;"></div>
+          </div>
+          <p style="margin-top:8px;">{{ catalog.selected_profile.documentation_rate_percent }}% documented</p>
+        </article>
+        <article class="card endpoint">
+          <h3>Key / Nullable</h3>
+          <p>{{ catalog.selected_profile.key_columns }} keys, {{ catalog.selected_profile.nullable_columns }} nullable</p>
+        </article>
+        <article class="card endpoint">
+          <h3>Type Mix</h3>
+          <p>{{ catalog.selected_profile.numeric_columns }} numeric, {{ catalog.selected_profile.categorical_columns }} non-numeric</p>
+        </article>
+        <article class="card endpoint">
+          <h3>Description Sources</h3>
+          <p>
+            Dictionary {{ catalog.selected_profile.source_counts.dictionary }} |
+            Custom {{ catalog.selected_profile.source_counts.custom }} |
+            Missing {{ catalog.selected_profile.undocumented_columns }}
+          </p>
+        </article>
+      </section>
+
+      <div class="dictionary-toolbar">
+        <button id="editDescriptionsBtn" class="btn btn-secondary" type="button">Edit Descriptions</button>
+        <button id="cancelEditBtn" class="btn btn-subtle" type="button" style="display:none;">Cancel</button>
+        <a class="btn btn-subtle" href="/data-statistics/export-undocumented?table={{ catalog.selected_table }}">Export Undocumented CSV</a>
+        <input id="fieldSearchInput" class="dictionary-search" type="text" placeholder="Search fields..." />
+        <label class="dictionary-toggle">
+          <input id="undocumentedOnlyToggle" type="checkbox" />
+          Show undocumented only
+        </label>
+      </div>
+
+      <form id="dictionaryForm" method="post" action="/data-statistics">
+        <input type="hidden" name="table" value="{{ catalog.selected_table }}" />
+
+      <div style="overflow-x:auto; margin-top:10px;" class="panel">
+        <table style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(226,188,75,0.3);">Field</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(226,188,75,0.3);">Type</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(226,188,75,0.3);">Nullable</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(226,188,75,0.3);">Key</th>
+              <th style="text-align:left; padding:8px; border-bottom:1px solid rgba(226,188,75,0.3);">Description</th>
+            </tr>
+          </thead>
+          <tbody id="dictionaryTableBody">
+            {% for c in catalog.selected_columns %}
+            <tr data-field-name="{{ c.COLUMN_NAME|lower }}" data-has-description="{{ '1' if c.HAS_DESCRIPTION else '0' }}">
+              <td style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.08);">{{ c.COLUMN_NAME }}</td>
+              <td style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.08);">{{ c.DATA_TYPE }}</td>
+              <td style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.08);">{{ c.IS_NULLABLE }}</td>
+              <td style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.08);">{{ c.COLUMN_KEY }}</td>
+              <td style="padding:8px; border-bottom:1px solid rgba(255,255,255,0.08);">
+                <div class="desc-readonly {{ '' if c.HAS_DESCRIPTION else 'desc-missing' }}">{{ c.DESCRIPTION or '—' }}</div>
+                <div class="desc-source source-{{ c.DESCRIPTION_SOURCE }}">{{ c.DESCRIPTION_SOURCE }}</div>
+                <textarea class="desc-editor" name="desc__{{ c.COLUMN_NAME }}" rows="2" style="display:none;">{{ c.DESCRIPTION }}</textarea>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div id="saveActions" class="cta-row" style="margin-top:12px; display:none;">
+        <button class="btn btn-primary" type="submit">Save Changes</button>
+      </div>
+      </form>
+    </section>
+    {% endif %}
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById('dictionaryForm');
+      if (!form) return;
+
+      const editBtn = document.getElementById('editDescriptionsBtn');
+      const cancelBtn = document.getElementById('cancelEditBtn');
+      const saveActions = document.getElementById('saveActions');
+      const searchInput = document.getElementById('fieldSearchInput');
+      const undocumentedToggle = document.getElementById('undocumentedOnlyToggle');
+      const rows = Array.from(document.querySelectorAll('#dictionaryTableBody tr'));
+
+      const setEditMode = (enabled) => {
+        const editors = form.querySelectorAll('.desc-editor');
+        const readonly = form.querySelectorAll('.desc-readonly');
+        editors.forEach(el => { el.style.display = enabled ? 'block' : 'none'; });
+        readonly.forEach(el => { el.style.display = enabled ? 'none' : 'block'; });
+        saveActions.style.display = enabled ? 'flex' : 'none';
+        cancelBtn.style.display = enabled ? 'inline-flex' : 'none';
+        editBtn.textContent = enabled ? 'Editing Enabled' : 'Edit Descriptions';
+        editBtn.disabled = enabled;
+      };
+
+      const applyFilters = () => {
+        const q = (searchInput.value || '').trim().toLowerCase();
+        const onlyUndocumented = undocumentedToggle.checked;
+
+        rows.forEach(row => {
+          const fieldName = row.getAttribute('data-field-name') || '';
+          const hasDescription = row.getAttribute('data-has-description') === '1';
+          const matchQuery = !q || fieldName.includes(q);
+          const matchCoverage = !onlyUndocumented || !hasDescription;
+          row.style.display = (matchQuery && matchCoverage) ? '' : 'none';
+        });
+      };
+
+      editBtn.addEventListener('click', () => setEditMode(true));
+      cancelBtn.addEventListener('click', () => window.location.reload());
+      searchInput.addEventListener('input', applyFilters);
+      undocumentedToggle.addEventListener('change', applyFilters);
+
+      applyFilters();
+    })();
+  </script>
+</body>
+</html>

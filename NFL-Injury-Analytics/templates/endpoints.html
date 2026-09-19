@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Endpoints</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">Developer Interface</div>
+        </div>
+      </a>
+      <a class="status-pill" href="/">← Home</a>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill" href="/">Overview</a>
+      <a class="nav-pill" href="/statistics">Statistics</a>
+      <a class="nav-pill" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill" href="/prediction-model">Model</a>
+      <a class="nav-pill active" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    <section class="hero card" style="margin-top:12px;">
+      <p class="eyebrow">Developer View</p>
+      <h1>API Endpoints</h1>
+      <p class="subtitle">Available routes for checking data quality, model outputs, and service health.</p>
+    </section>
+
+    <section class="grid grid-3" style="margin-top:16px;">
+      <article class="card endpoint">
+        <h3>/health</h3>
+        <p>Service heartbeat — confirms the server is running.</p>
+        <a class="endpoint-link" href="/health" target="_blank" rel="noreferrer">Open endpoint</a>
+      </article>
+      <article class="card endpoint">
+        <h3>/api/quality</h3>
+        <p>Data quality metrics: event linkage rates and log coverage.</p>
+        <a class="endpoint-link" href="/api/quality" target="_blank" rel="noreferrer">Open endpoint</a>
+      </article>
+      <article class="card endpoint">
+        <h3>/api/model/overview</h3>
+        <p>Model training status, accuracy metrics, and top predictive features.</p>
+        <a class="endpoint-link" href="/api/model/overview" target="_blank" rel="noreferrer">Open endpoint</a>
+      </article>
+    </section>
+
+    <section class="grid grid-3" style="margin-top:10px;">
+      <article class="card endpoint">
+        <h3>POST /api/model/predict</h3>
+        <p>Run a player availability prediction given injury detail, severity, and game context.</p>
+      </article>
+      <article class="card endpoint">
+        <h3>POST /api/model/backtest</h3>
+        <p>Evaluate model accuracy against a historical season and week.</p>
+      </article>
+      <article class="card endpoint">
+        <h3>/api/analytics/explorer</h3>
+        <p>Drill-down injury analytics grouped by body region, position, team, or season.</p>
+        <a class="endpoint-link" href="/api/analytics/explorer" target="_blank" rel="noreferrer">Open endpoint</a>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

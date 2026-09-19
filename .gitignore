@@ -1,0 +1,31 @@
+# Local environments
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.vscode/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.*
+
+# Generated model/cache files
+.model_cache.joblib
+model_predictions_log
+*.log
+pipeline/state/
+pipeline/backups/
+nfl_data/backups/
+
+# Downloaded and intermediate datasets
+nfl_data/*.csv
+!nfl_data/dictionary_*.csv
+nfl_data/temp_*
+**/.ipynb_checkpoints/
+
+# Generated outputs
+outputs/

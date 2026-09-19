@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NFL Injury Analytics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles/landing.css') }}" />
+  <style>
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    @media (min-width: 700px) {
+      .nav-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .footer-row {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .footer-sep { color: var(--border-strong); font-size: 0.8rem; }
+    .footer-link { color: var(--text-muted); font-size: 0.78rem; text-decoration: none; font-weight: 600; }
+    .footer-link:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="logo-wrap" href="/">
+        <img class="school-logo" src="{{ url_for('static', filename='images/clarkson-shield.png') }}" alt="Clarkson University logo" />
+        <div>
+          <span class="logo-text">Clarkson University</span>
+          <div class="logo-subtext">NFL Injury Analytics — Capstone</div>
+        </div>
+      </a>
+      <span class="status-pill">API Online</span>
+    </div>
+  </header>
+
+  <nav class="site-nav" aria-label="Primary navigation">
+    <div class="site-nav-inner">
+      <a class="nav-pill active" href="/">Overview</a>
+      <a class="nav-pill" href="/statistics">Statistics</a>
+      <a class="nav-pill" href="/data-statistics">Data Dictionary</a>
+      <a class="nav-pill" href="/prediction-model">Model</a>
+      <a class="nav-pill" href="/endpoints">API Routes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+
+    <!-- Hero -->
+    <section class="hero card" style="margin-top:12px;">
+      <p class="eyebrow">Capstone Research Project</p>
+      <h1>NFL Injury Analytics</h1>
+      <p class="subtitle">
+        Explore injury trends, examine game-context features, and assess
+        model readiness for predicting NFL player availability.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/statistics">Open Analytics Workspace</a>
+        <a class="btn btn-secondary" href="/prediction-model">View Model</a>
+        <a class="btn btn-subtle" href="/endpoints">Explore API</a>
+      </div>
+    </section>
+
+    <!-- Section cards -->
+    <div class="nav-grid">
+      <a class="nav-card" href="/statistics">
+        <span class="nc-label">Analytics</span>
+        <span class="nc-title">Statistics Workspace</span>
+        <span class="nc-desc">Injury trends over time, module explorer, and dimension breakdowns.</span>
+      </a>
+      <a class="nav-card" href="/data-statistics">
+        <span class="nc-label">Reference</span>
+        <span class="nc-title">Data Dictionary</span>
+        <span class="nc-desc">Field-level documentation, sources, and coverage metrics.</span>
+      </a>
+      <a class="nav-card" href="/prediction-model">
+        <span class="nc-label">Modeling</span>
+        <span class="nc-title">Prediction Model</span>
+        <span class="nc-desc">Feature candidates, readiness checkpoints, and model assumptions.</span>
+      </a>
+      <a class="nav-card" href="/endpoints">
+        <span class="nc-label">Developer</span>
+        <span class="nc-title">API Reference</span>
+        <span class="nc-desc">Explore the REST endpoints powering the analytics application.</span>
+      </a>
+    </div>
+
+    <!-- Developer links -->
+    <div class="footer-row">
+      <a class="footer-link" href="/endpoints">API Routes</a>
+      <span class="footer-sep">·</span>
+      <a class="footer-link" href="/health" target="_blank" rel="noreferrer">Health Check</a>
+      <span class="footer-sep">·</span>
+      <a class="footer-link" href="/api/quality" target="_blank" rel="noreferrer">Quality JSON</a>
+    </div>
+
+  </main>
+</body>
+</html>
